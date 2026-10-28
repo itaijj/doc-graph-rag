@@ -77,6 +77,7 @@ def health() -> dict:
         "status": "ok" if (ok_pg and ok_neo) else "degraded",
         "postgres": ok_pg,
         "neo4j": ok_neo,
+        "llm_base_url": settings.openai_base_url,
         "model": settings.openai_model,
     }
 

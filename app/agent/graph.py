@@ -11,34 +11,17 @@ Agent strategy (state-of-the-art corrective RAG on LangGraph):
 
 import json
 import logging
-import re
 from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
-from openai import OpenAI
 
 from app.agent.prompts import GRADE_PROMPT, PLAN_PROMPT, SYNTHESIZE_PROMPT
 from app.agent.state import AgentState
 from app.agent.tools import RetrieverToolkit
 from app.config import get_settings
+from app.llm import chat_json, get_openai_client
 
 logger = logging.getLogger(__name__)
-
-
-def _json_call(client: OpenAI, model: str, prompt: str) -> dict:
-    """Chat call that expects strict JSON; tolerates markdown fences."""
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-        response_format={"type": "json_object"},
-    )
-    content = (resp.choices[0].message.content or "{}").strip()
-    content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content)
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        return {}
 
 
 def _format_evidence(evidence: list[dict]) -> str:
@@ -62,7 +45,7 @@ class DocGraphAgent:
         if not s.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY is not set — the agent requires it.")
         self.settings = s
-        self.client = OpenAI(api_key=s.openai_api_key, timeout=s.openai_timeout)
+        self.client = get_openai_client()
         self.model = s.openai_model
         self.toolkit = toolkit or RetrieverToolkit()
         self.graph = self._build_graph()
@@ -83,7 +66,7 @@ class DocGraphAgent:
                 f"Evidence so far:\n{evidence_summary[:4000]}"
             )
 
-        data = _json_call(
+        data = chat_json(
             self.client, self.model, PLAN_PROMPT.format(question=question, history=history)
         )
         retrievers = data.get("retrievers", [])
@@ -108,7 +91,7 @@ class DocGraphAgent:
             logger.info("[grade] iteration cap reached; proceeding to synthesis")
             return {"grade": "sufficient", "grade_notes": "iteration cap reached"}
 
-        data = _json_call(
+        data = chat_json(
             self.client,
             self.model,
             GRADE_PROMPT.format(

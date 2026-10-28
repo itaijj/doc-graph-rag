@@ -1,13 +1,10 @@
 """LLM-based entity and relation extraction, used to build the document graph."""
 
-import json
 import logging
-import re
 from typing import Any
 
-from openai import OpenAI
-
 from app.config import get_settings
+from app.llm import chat_json, get_openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +36,7 @@ class EntityExtractor:
         s = get_settings()
         if not s.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY is not set — entity extraction requires it.")
-        self.client = OpenAI(api_key=s.openai_api_key, timeout=s.openai_timeout)
+        self.client = get_openai_client()
         self.model = s.openai_model
         self.max_entities = s.max_entities_per_chunk
 
@@ -48,33 +45,22 @@ class EntityExtractor:
         prompt = EXTRACTION_PROMPT.format(
             max_entities=self.max_entities, title=title, chunk=chunk_text[:6000]
         )
+        data = chat_json(self.client, self.model, prompt)
+
         try:
-            resp = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-            content = resp.choices[0].message.content or "{}"
-            data = json.loads(self._strip_json_fences(content))
+            entities = [
+                {"name": str(e.get("name", "")).strip(), "type": str(e.get("type", "Other"))}
+                for e in data.get("entities", [])
+                if e.get("name")
+            ]
+            valid_names = {(e["name"], e["type"]) for e in entities}
+            relations = [
+                r
+                for r in data.get("relations", [])
+                if (r.get("source", {}).get("name"), r.get("source", {}).get("type")) in valid_names
+                and (r.get("target", {}).get("name"), r.get("target", {}).get("type")) in valid_names
+            ]
+            return {"entities": entities, "relations": relations}
         except Exception:
             logger.exception("Entity extraction failed for a chunk; skipping.")
             return {"entities": [], "relations": []}
-
-        entities = [
-            {"name": str(e.get("name", "")).strip(), "type": str(e.get("type", "Other"))}
-            for e in data.get("entities", [])
-            if e.get("name")
-        ]
-        valid_names = {(e["name"], e["type"]) for e in entities}
-        relations = [
-            r
-            for r in data.get("relations", [])
-            if (r.get("source", {}).get("name"), r.get("source", {}).get("type")) in valid_names
-            and (r.get("target", {}).get("name"), r.get("target", {}).get("type")) in valid_names
-        ]
-        return {"entities": entities, "relations": relations}
-
-    @staticmethod
-    def _strip_json_fences(text: str) -> str:
-        return re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())

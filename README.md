@@ -3,7 +3,7 @@
 A production-ready document ingestion and retrieval system that parses **PDF, Word, and Excel**
 documents with [Docling](https://github.com/docling-project/docling), stores them in **three
 complementary databases**, and answers questions through a **LangGraph agent** powered by a
-configurable OpenAI LLM.
+configurable **OpenAI-compatible LLM** (any provider/endpoint — see [LLM backbone](#llm-backbone-any-openai-compatible-endpoint)).
 
 ## Architecture
 
@@ -110,14 +110,37 @@ make ask Q="What entities link the compliance report to the budget spreadsheet?"
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENAI_API_KEY` | — | **Required** for embeddings + LLM |
-| `OPENAI_MODEL` | `gpt-4o` | Backbone LLM for the LangGraph agent |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `EMBEDDING_DIM` | `1536` | Vector dimension (match your embedding model) |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Base URL of **any OpenAI-compatible endpoint** (see below) |
+| `OPENAI_API_KEY` | — | **Required** for embeddings + LLM (any dummy value for local servers) |
+| `OPENAI_MODEL` | `gpt-4o` | Backbone LLM model name — **any model your endpoint serves** |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model served by the same endpoint |
+| `EMBEDDING_DIM` | `1536` | Vector dimension (match your embedding model!) |
 | `POSTGRES_HOST/PORT/DB/USER/PASSWORD` | `localhost/5433/docgraph/...` | Relational + vector DB |
 | `NEO4J_URI/USER/PASSWORD` | `bolt://localhost:7687/neo4j/...` | Graph DB |
 | `CHUNK_SIZE / CHUNK_OVERLAP` | `1200 / 200` | Chunking parameters |
 | `MAX_AGENT_ITERATIONS` | `3` | Max plan→retrieve→grade loops |
+
+## LLM backbone: any OpenAI-compatible endpoint
+
+The backbone does **not** have to be an OpenAI model. Any endpoint speaking the
+OpenAI chat-completions API works — just set `OPENAI_BASE_URL` and `OPENAI_MODEL`:
+
+| Backend | `OPENAI_BASE_URL` | Example `OPENAI_MODEL` |
+|---------|-------------------|------------------------|
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o` |
+| vLLM (self-hosted) | `http://localhost:8000/v1` | `meta-llama/Llama-3.1-70B-Instruct` |
+| Ollama | `http://localhost:11434/v1` | `llama3.1` |
+| LiteLLM proxy | `http://localhost:4000/v1` | any routed model name |
+| OpenRouter | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4` |
+| Azure OpenAI (compat) | `https://<resource>.openai.azure.com/openai/v1` | deployed model name |
+
+Notes:
+- If the endpoint doesn't support JSON mode (`response_format`), the agent automatically
+  falls back to plain calls with JSON extraction — no configuration needed.
+- Embeddings must be served by the **same endpoint** (`/embeddings` API). When using e.g.
+  vLLM or Ollama, set `OPENAI_EMBEDDING_MODEL` and `EMBEDDING_DIM` to match (e.g.
+  `nomic-embed-text` with `768`). Keep the embedding model consistent across ingests —
+  vectors from different models are not comparable.
 
 ## Project layout
 
@@ -125,6 +148,7 @@ make ask Q="What entities link the compliance report to the budget spreadsheet?"
 app/
 ├── main.py               # FastAPI service (/ingest, /query, /health)
 ├── config.py             # Pydantic settings (env-driven)
+├── llm.py                # OpenAI-compatible client factory + JSON-mode fallback
 ├── ingestion/
 │   ├── parser.py         # Docling: PDF/DOCX/XLSX → structured documents
 │   ├── chunker.py        # Token-aware chunking
