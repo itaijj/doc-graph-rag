@@ -113,8 +113,8 @@ make ask Q="What entities link the compliance report to the budget spreadsheet?"
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Base URL of **any OpenAI-compatible endpoint** (see below) |
 | `OPENAI_API_KEY` | — | **Required** for embeddings + LLM (any dummy value for local servers) |
 | `OPENAI_MODEL` | `gpt-4o` | Backbone LLM model name — **any model your endpoint serves** |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model served by the same endpoint |
-| `EMBEDDING_DIM` | `1536` | Vector dimension (match your embedding model!) |
+| `EMBEDDING_MODEL` | `BAAI/bge-m3` | Local Hugging Face embedding model (sentence-transformers; downloaded on first use) |
+| `EMBEDDING_DIM` | `1024` | Vector dimension (match your embedding model!) |
 | `POSTGRES_HOST/PORT/DB/USER/PASSWORD` | `localhost/5433/docgraph/...` | Relational + vector DB |
 | `NEO4J_URI/USER/PASSWORD` | `bolt://localhost:7687/neo4j/...` | Graph DB |
 | `CHUNK_SIZE / CHUNK_OVERLAP` | `1200 / 200` | Chunking parameters |
@@ -137,10 +137,10 @@ OpenAI chat-completions API works — just set `OPENAI_BASE_URL` and `OPENAI_MOD
 Notes:
 - If the endpoint doesn't support JSON mode (`response_format`), the agent automatically
   falls back to plain calls with JSON extraction — no configuration needed.
-- Embeddings must be served by the **same endpoint** (`/embeddings` API). When using e.g.
-  vLLM or Ollama, set `OPENAI_EMBEDDING_MODEL` and `EMBEDDING_DIM` to match (e.g.
-  `nomic-embed-text` with `768`). Keep the embedding model consistent across ingests —
-  vectors from different models are not comparable.
+- Embeddings run **locally** with a Hugging Face model via `sentence-transformers` (default
+  `BAAI/bge-m3`, 1024 dims) — no embeddings API is needed. To switch models, set
+  `EMBEDDING_MODEL` and `EMBEDDING_DIM` to match. Keep the embedding model consistent across
+  ingests — vectors from different models are not comparable.
 
 ## Project layout
 

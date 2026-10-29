@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS documents (
     doc_type     TEXT NOT NULL,          -- pdf | docx | xlsx
     checksum     TEXT NOT NULL,
     num_chunks   INTEGER NOT NULL DEFAULT 0,
-    metadata     JSONB  NOT NULL DEFAULT '{}',
+    metadata     JSONB  NOT NULL DEFAULT '{{}}',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     content      TEXT NOT NULL,
     token_count  INTEGER NOT NULL DEFAULT 0,
     page_numbers INTEGER[],
-    metadata     JSONB NOT NULL DEFAULT '{}',
+    metadata     JSONB NOT NULL DEFAULT '{{}}',
     embedding    vector({dim})
 );
 
@@ -50,14 +50,17 @@ class PostgresStore:
 
     def __init__(self) -> None:
         self.settings = get_settings()
+        # register_vector needs the extension to exist, so create it before the pool opens.
+        with psycopg.connect(self.settings.postgres_dsn, autocommit=True) as conn:
+            conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        # `configure` ensures every pooled connection can serialize `vector` types.
         self.pool = ConnectionPool(
             conninfo=self.settings.postgres_dsn,
             min_size=1,
             max_size=8,
+            configure=self._configure_conn,
             open=True,
         )
-        # Ensure every pooled connection can serialize `vector` types.
-        self.pool.configure(self._configure_conn)
 
     @staticmethod
     def _configure_conn(conn: psycopg.Connection) -> None:
