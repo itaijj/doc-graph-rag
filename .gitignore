@@ -15,8 +15,14 @@ build/
 # Docling / ingestion artifacts
 *.docling.json
 uploads/
+extractions/
 
 # OS / editors
 .DS_Store
 .idea/
 .vscode/
+
+
+# Sample documents (never commit)
+invoices/
+extractions_test/

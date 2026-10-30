@@ -85,15 +85,7 @@ def health() -> dict:
 @app.post("/ingest/file")
 async def ingest_file(file: UploadFile) -> dict:
     data = await file.read()
-    from app.ingestion.parser import parse_bytes
-
-    parsed = parse_bytes(file.filename or "upload", data)
-    import hashlib
-
-    return _pipeline._ingest_parsed(
-        parsed, source_path=file.filename or "upload",
-        checksum=hashlib.sha256(data).hexdigest(),
-    )
+    return _pipeline.ingest_bytes(file.filename or "upload", data)
 
 
 @app.post("/ingest/folder")

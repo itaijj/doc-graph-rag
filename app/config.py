@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     chunk_overlap: int = 200
     max_entities_per_chunk: int = 15
 
+    # ── Schema-driven field extraction (disabled when schema path is empty) ──
+    extraction_schema_path: str = ""
+    extraction_output_dir: str = "./extractions"
+
     # ── Agent ───────────────────────────────────────────────────
     max_agent_iterations: int = 3
     vector_search_top_k: int = 6

@@ -106,6 +106,86 @@ Or run the agent CLI:
 make ask Q="What entities link the compliance report to the budget spreadsheet?"
 ```
 
+## Schema-driven field extraction (optional)
+
+During ingestion the app can extract a fixed set of fields from each **PDF** according to a
+[JSON Schema](https://json-schema.org/) you provide, and save the result as one JSON file per
+document — ready to be aggregated later into statistics. Fields may be scalars, enums, nested
+objects, or **lists of JSON objects** (e.g. invoice line items).
+
+It uses Docling's experimental `DocumentExtractor` with the local
+[`numind/NuExtract-2.0-2B`](https://huggingface.co/numind/NuExtract-2.0-2B) vision-language model.
+
+### Quick use
+
+```bash
+# 1. install (qwen-vl-utils and jsonschema are included)
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+# 2. point the app at a schema (an example is provided)
+echo 'EXTRACTION_SCHEMA_PATH=./schemas/example_extraction_schema.json' >> .env
+
+# 3. ingest as usual — each new PDF also produces ./extractions/<title>.json
+make ingest FOLDER=./my_docs
+```
+
+### Schema example
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "document_title": {"type": "string"},
+    "document_type": {"type": "string", "enum": ["invoice", "contract", "report", "other"]},
+    "total_amount": {"type": "number"},
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "quantity": {"type": "integer"},
+          "price": {"type": "number"}
+        }
+      }
+    }
+  }
+}
+```
+
+Supported: `string`, `integer`, `number`, `boolean`, `enum`, `format: date`, nested objects, arrays of
+scalars / objects, and local `$ref`/`$defs`. Unsupported constructs (`oneOf`, `anyOf`, `allOf`, …)
+raise a clear error at startup.
+
+### Output
+
+One file per document in `EXTRACTION_OUTPUT_DIR` (default `./extractions`, git-ignored), named by the
+document title (a short checksum suffix is added only if two different files share a title):
+
+```json
+{
+  "source_name": "invoice.pdf", "checksum": "…", "document_id": "…", "schema_hash": "…",
+  "status": "extracted",
+  "data":  { "document_title": "…", "line_items": [ {"name": "…", "quantity": 2, "price": 10.0} ] },
+  "pages": [ { "page_no": 1, "extracted_data": {…}, "raw_text": "…", "errors": [] } ],
+  "errors": []
+}
+```
+
+- The model runs **once per page**; `data` merges the pages (lists are concatenated, scalars take the
+  first non-null value) and `pages` keeps the raw per-page output for traceability.
+- `status` is `extracted`, `partial`, `extraction_skipped` (DOCX/XLSX are not supported by the
+  extractor) or `extraction_failed`. Extraction problems never abort ingestion.
+- Read all results later with `app.ingestion.extraction_store.iter_extractions()`.
+
+### Things to know
+
+- The model (~4.2 GB) is downloaded from Hugging Face on first use.
+- **GPU strongly recommended.** On CPU a 2-page invoice takes roughly 10–15 minutes.
+- Small models make mistakes — always spot-check results against the source documents.
+- The ingestion summary includes `extraction_status` (`disabled` when no schema is configured).
+
 ## Configuration (`.env`)
 
 | Variable | Default | Description |
@@ -118,6 +198,8 @@ make ask Q="What entities link the compliance report to the budget spreadsheet?"
 | `POSTGRES_HOST/PORT/DB/USER/PASSWORD` | `localhost/5433/docgraph/...` | Relational + vector DB |
 | `NEO4J_URI/USER/PASSWORD` | `bolt://localhost:7687/neo4j/...` | Graph DB |
 | `CHUNK_SIZE / CHUNK_OVERLAP` | `1200 / 200` | Chunking parameters |
+| `EXTRACTION_SCHEMA_PATH` | *(empty — disabled)* | Path to a JSON Schema file of fields to extract from each PDF during ingestion |
+| `EXTRACTION_OUTPUT_DIR` | `./extractions` | Directory where one `<title>.json` extraction result per document is written |
 | `MAX_AGENT_ITERATIONS` | `3` | Max plan→retrieve→grade loops |
 
 ## LLM backbone: any OpenAI-compatible endpoint
@@ -154,6 +236,8 @@ app/
 │   ├── chunker.py        # Token-aware chunking
 │   ├── embedder.py       # OpenAI embeddings
 │   ├── entity_extract.py # LLM entity + relation extraction (graph linking)
+│   ├── field_extract.py  # JSON Schema → NuExtract template, per-page extraction + merge
+│   ├── extraction_store.py # One JSON file per document (extraction results)
 │   └── pipeline.py       # Orchestrates the full ingestion flow
 ├── db/
 │   ├── postgres.py       # Relational schema + pgvector store

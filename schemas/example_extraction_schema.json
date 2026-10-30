@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Example document extraction schema",
+  "type": "object",
+  "properties": {
+    "document_title": {
+      "type": "string",
+      "description": "Title of the document"
+    },
+    "document_type": {
+      "type": "string",
+      "enum": ["report", "invoice", "contract", "letter", "other"],
+      "description": "Kind of document"
+    },
+    "total_amount": {
+      "type": "number",
+      "description": "Total monetary amount mentioned in the document, if any"
+    },
+    "line_items": {
+      "type": "array",
+      "description": "Individual line items listed in the document",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "quantity": { "type": "integer" },
+          "price": { "type": "number" }
+        }
+      }
+    }
+  }
+}
